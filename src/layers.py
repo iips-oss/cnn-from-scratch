@@ -1,14 +1,6 @@
 import numpy as np
-class Layer:
-    def forward():
-        pass
-        raise NotImplementedError
-    def backwaward():
-        pass
-        raise NotImplementedError
 
-
-class Dense(Layer):
+class Dense():
     def __init__(self, input_size, output_size):
         self.weights = np.random.randn(input_size, output_size) * 0.01 #-> small weights no gradient explosion
         self.bias = np.zeros((1, output_size))
@@ -28,7 +20,7 @@ class Dense(Layer):
         
         return input_gradient
 
-class Conv(Layer):
+class Conv():
     def __init__(self,input_shape,kernel_size,num_kernels):
         input_depth,input_height,input_width = input_shape
         self.num_kernels = num_kernels
