@@ -102,3 +102,167 @@ class Conv:
 
         self.biases -= learning_rate * bias_gradient
         return input_gradient
+
+class MaxPool:
+    def __init__(self, pool_size=2, stride=2):
+        self.pool_size = pool_size
+        self.stride = stride
+
+    def forward(self, input_data):
+        self.input = input_data
+
+        depth, height, width = input_data.shape
+
+        out_height = (height - self.pool_size) // self.stride + 1
+        out_width = (width - self.pool_size) // self.stride + 1
+
+        self.output_shape = (depth, out_height, out_width)
+
+        output = np.zeros(self.output_shape)
+
+        for d in range(depth):
+            for row in range(out_height):
+                for col in range(out_width):
+
+                    start_y = row * self.stride
+                    start_x = col * self.stride
+
+                    # taking current window
+                    patch = input_data[
+                        d,
+                        start_y:start_y + self.pool_size,
+                        start_x:start_x + self.pool_size,
+                    ]
+
+                    output[d, row, col] = np.max(patch)
+
+        return output
+
+    def backward(self, output_gradient, learning_rate=None):
+        input_gradient = np.zeros_like(self.input)
+
+        depth = self.input.shape[0]
+
+        for d in range(depth):
+            for row in range(self.output_shape[1]):
+                for col in range(self.output_shape[2]):
+
+                    start_y = row * self.stride
+                    start_x = col * self.stride
+
+                    patch = self.input[
+                        d,
+                        start_y:start_y + self.pool_size,
+                        start_x:start_x + self.pool_size,
+                    ]
+
+                    max_val = np.max(patch)
+
+                    # gradient only goes to max value position
+                    for i in range(self.pool_size):
+                        for j in range(self.pool_size):
+
+                            if patch[i, j] == max_val:
+                                input_gradient[
+                                    d,
+                                    start_y + i,
+                                    start_x + j,
+                                ] += output_gradient[d, row, col]
+
+        return input_gradient
+
+#write the flatten layer here
+#And try to write the test function of it too if passible
+
+
+
+
+def test_maxpool():
+    print('Max Poll Test:\n')
+    sample_input = np.array([
+        [
+            [1, 3, 2, 4],
+            [5, 6, 1, 2],
+            [7, 8, 9, 3],
+            [4, 5, 2, 1],
+        ]
+    ])
+
+    pool = MaxPool()
+
+    result = pool.forward(sample_input)
+
+    print("Input:")
+    print(sample_input)
+
+    print("\nAfter Max Pooling:")
+    print(result)
+
+def test_dense():
+    print('Dense Test:\n')
+    x = np.random.randn(1, 10)
+
+    dense = Dense(
+        input_size=10,
+        output_size=5,
+    )
+
+    out = dense.forward(x)
+
+    print("Input shape:", x.shape)
+    print("Output shape:", out.shape)
+
+    grad = np.random.randn(1, 5)
+    back = dense.backward(grad, learning_rate=0.01)
+
+    print("Backward shape:", back.shape)
+
+def test_conv():
+    print('Conv Test:\n')
+
+    image = np.random.randn(3, 32, 32)
+
+    conv = Conv(
+        input_shape=(3, 32, 32),
+        kernel_size=3,
+        num_kernels=8,
+    )
+
+    out = conv.forward(image)
+
+    print("Input shape:", image.shape)
+    print("Output shape:", out.shape)
+
+    grad = np.random.randn(*out.shape)
+    back = conv.backward(grad, learning_rate=0.01)
+
+    print("Backward shape:", back.shape)
+
+def test_conv_pool_pipeline():
+    print('Conv + Max Poll Test:\n')
+
+    image = np.random.randn(3, 32, 32)
+
+    conv = Conv(
+        input_shape=(3, 32, 32),
+        kernel_size=3,
+        num_kernels=8,
+    )
+
+    pool = MaxPool(
+        pool_size=2,
+        stride=2,
+    )
+
+    conv_out = conv.forward(image)
+    pool_out = pool.forward(conv_out)
+
+    print("Input shape:", image.shape)
+    print("Conv shape:", conv_out.shape)
+    print("Pool shape:", pool_out.shape)
+
+if __name__ == "__main__":
+    test_dense()
+    test_conv()
+    test_maxpool()
+    test_conv_pool_pipeline()
