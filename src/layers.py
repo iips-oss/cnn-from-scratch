@@ -168,3 +168,14 @@ class MaxPool:
                                 ] += output_gradient[d, row, col]
 
         return input_gradient
+
+class Flatten:
+    def __init__(self):
+        self.input_shape = None
+        self.batch_size = 0
+    def forward(self, x):
+        self.input_shape = x.shape
+        self.batch_size = x.shape[0]
+        return x.reshape(self.batch_size, -1)
+    def backward(self, grad_input):
+        return grad_input.reshape(self.input_shape)
