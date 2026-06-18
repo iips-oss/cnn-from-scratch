@@ -1,9 +1,20 @@
 import numpy as np
-from src.layers import MaxPool, Dense, Conv
+from src.layers import MaxPool, Dense, Conv, Flatten
 
 
-# TODO: write the flatten layer here
-# And try to write the test function of it too if passible
+def test_flatten():
+    sample_input = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+    flatten = Flatten()
+    result = flatten.forward(sample_input)
+
+    expected_output = np.array([[1, 2, 3, 4], [5, 6, 7, 8]])
+    np.testing.assert_array_equal(result, expected_output)
+
+    grad_output = np.array([[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8]])
+    grad_input = flatten.backward(grad_output)
+
+    np.testing.assert_allclose(grad_input, sample_input * 0.1, rtol=1e-7)
+
 
 
 def test_maxpool():

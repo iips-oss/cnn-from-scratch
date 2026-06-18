@@ -6,19 +6,23 @@ class Dense:
         # small weights no gradient explosion
         self.weights = np.random.randn(input_size, output_size) * 0.01
         self.biases = np.zeros((1, output_size))
+        self.dweights = None
+        self.dbiases = None
 
     def forward(self, input_data):
         self.input = input_data  # falttened 1D vector
         return np.dot(self.input, self.weights) + self.biases
 
-    def backward(self, output_gradient, learning_rate):
+    def backward(self, output_gradient, learning_rate=None):
         # calculating gradient
-        weights_gradient = self.input.T @ output_gradient  # @ is matrix product
+        self.dweights = self.input.T @ output_gradient  # @ is matrix product
+        self.dbiases = np.sum(output_gradient, axis=0, keepdims=True)
         input_gradient = output_gradient @ self.weights.T
 
-        # updating parameters
-        self.weights -= learning_rate * weights_gradient
-        self.biases -= learning_rate * np.sum(output_gradient, axis=0, keepdims=True)
+        # updating parameters if learning_rate is provided
+        if learning_rate is not None:
+            self.weights -= learning_rate * self.dweights
+            self.biases -= learning_rate * self.dbiases
 
         return input_gradient
 
@@ -48,59 +52,34 @@ class Conv:
         )
         self.kernels = np.random.randn(*self.kernel_shape) * 0.1
         self.biases = np.zeros((num_kernels, 1, 1))
+        self.dkernels = None
+        self.dbiases = None
 
     def forward(self, input_data):
         self.input = input_data
-        self.output = np.zeros(self.output_shape) + self.biases
-
-        for i in range(self.num_kernels):  # go through every kernel
-            for j in range(self.input_depth):  # go through every channel of image
-                for y in range(self.output_shape[1]):  # go through every row
-                    for x in range(self.output_shape[2]):  # go through every column
-                        # extract region
-                        region_of_intrest = self.input[
-                            j,
-                            # a : b => slicing a to b
-                            y : y + self.kernel_shape[2],
-                            x : x + self.kernel_shape[3],
-                        ]
-
-                        # apply kernel filter to region
-                        self.output[i, y, x] += np.sum(
-                            region_of_intrest * self.kernels[i, j]
-                        )
-
+        from numpy.lib.stride_tricks import sliding_window_view
+        patches = sliding_window_view(input_data, (self.kernel_shape[2], self.kernel_shape[3]), axis=(1, 2))
+        self.output = np.einsum('jyxkl,ijkl->iyx', patches, self.kernels) + self.biases
         return self.output
 
-    def backward(self, output_gradient, learning_rate):
-        kernel_gradient = np.zeros(self.kernel_shape)
+    def backward(self, output_gradient, learning_rate=None):
+        from numpy.lib.stride_tricks import sliding_window_view
+        patches = sliding_window_view(self.input, (self.kernel_shape[2], self.kernel_shape[3]), axis=(1, 2))
+        
+        self.dkernels = np.einsum('iyx,jyxkl->ijkl', output_gradient, patches)
+        self.dbiases = np.sum(output_gradient, axis=(1, 2), keepdims=True)
+
         input_gradient = np.zeros(self.input_shape)
+        for y in range(self.output_shape[1]):
+            for x in range(self.output_shape[2]):
+                input_gradient[:, y : y + self.kernel_shape[2], x : x + self.kernel_shape[3]] += np.tensordot(
+                    output_gradient[:, y, x], self.kernels, axes=(0, 0)
+                )
 
-        for i in range(self.num_kernels):
-            for j in range(self.input_depth):
-                for y in range(self.output_shape[1]):
-                    for x in range(self.output_shape[2]):
-                        region_of_intrest = self.input[
-                            j,
-                            y : y + self.kernel_shape[2],
-                            x : x + self.kernel_shape[3],
-                        ]
-                        # weight sharing accumilation
-                        kernel_gradient[i, j] += (
-                            output_gradient[i, y, x] * region_of_intrest
-                        )
+        if learning_rate is not None:
+            self.kernels -= learning_rate * self.dkernels
+            self.biases -= learning_rate * self.dbiases
 
-                        # input gradient accumilation
-                        input_gradient[
-                            j,
-                            y : y + self.kernel_shape[2],
-                            x : x + self.kernel_shape[3],
-                        ] += output_gradient[i, y, x] * self.kernels[i, j]
-
-        self.kernels -= learning_rate * kernel_gradient
-        bias_gradient = np.sum(output_gradient, axis=(1, 2), keepdims=True)
-
-        self.biases -= learning_rate * bias_gradient
         return input_gradient
 
 
@@ -119,63 +98,42 @@ class MaxPool:
 
         self.output_shape = (depth, out_height, out_width)
 
-        output = np.zeros(self.output_shape)
-
-        for d in range(depth):
-            for row in range(out_height):
-                for col in range(out_width):
-                    start_y = row * self.stride
-                    start_x = col * self.stride
-
-                    # taking current window
-                    patch = input_data[
-                        d,
-                        start_y : start_y + self.pool_size,
-                        start_x : start_x + self.pool_size,
-                    ]
-
-                    output[d, row, col] = np.max(patch)
-
-        return output
+        from numpy.lib.stride_tricks import sliding_window_view
+        patches = sliding_window_view(input_data, (self.pool_size, self.pool_size), axis=(1, 2))
+        patches = patches[:, ::self.stride, ::self.stride]
+        
+        return np.max(patches, axis=(3, 4))
 
     def backward(self, output_gradient):
         input_gradient = np.zeros_like(self.input)
 
         depth, out_height, out_width = self.output_shape
 
-        for d in range(depth):
-            for row in range(out_height):
-                for col in range(out_width):
-                    start_y = row * self.stride
-                    start_x = col * self.stride
-
-                    patch = self.input[
-                        d,
-                        start_y : start_y + self.pool_size,
-                        start_x : start_x + self.pool_size,
-                    ]
-
-                    max_val = np.max(patch)
-
-                    # gradient only goes to max value position
-                    for i in range(self.pool_size):
-                        for j in range(self.pool_size):
-                            if patch[i, j] == max_val:
-                                input_gradient[
-                                    d,
-                                    start_y + i,
-                                    start_x + j,
-                                ] += output_gradient[d, row, col]
+        for row in range(out_height):
+            for col in range(out_width):
+                start_y = row * self.stride
+                start_x = col * self.stride
+                
+                patch = self.input[:, start_y : start_y + self.pool_size, start_x : start_x + self.pool_size]
+                max_val = np.max(patch, axis=(1, 2), keepdims=True)
+                mask = (patch == max_val)
+                
+                input_gradient[:, start_y : start_y + self.pool_size, start_x : start_x + self.pool_size] += (
+                    output_gradient[:, row, col][:, np.newaxis, np.newaxis] * mask
+                )
 
         return input_gradient
+
 
 class Flatten:
     def __init__(self):
         self.input_shape = None
         self.batch_size = 0
+        
     def forward(self, x):
         self.input_shape = x.shape
         self.batch_size = x.shape[0]
         return x.reshape(self.batch_size, -1)
+        
     def backward(self, grad_input):
         return grad_input.reshape(self.input_shape)
