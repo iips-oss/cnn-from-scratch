@@ -22,6 +22,8 @@ You can run predictions on your own handwritten digit images:
 The script will resize it to 28x28, convert to grayscale, and automatically invert the background if it is white (like pen on paper) so the model reads it correctly.
 Also you can try ```img/``` folder to test some real world examples .:)
 
+### our model is live !!!
+[Hugging Face](https://huggingface.co/spaces/maxsn2200/IIPS_CNN)
 enjoy!!!!!
 
 
